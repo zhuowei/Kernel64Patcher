@@ -214,6 +214,53 @@ int get_amfi_out_of_my_way_patch(void* kernel_buf,size_t kernel_len) {
     return 0;
 }
 
+// rorgn_stash_range/rorgn_lockdown
+int get_CTRR_patch(void *kernel_buf, size_t kernel_len) {
+    printf("%s: Entering ...\n",__FUNCTION__);
+    char panicString[] = "lock-regs: /chosen/lock-regs not found (your iBoot or EDT may be too old) @%s:%d";
+    void* ent_loc = memmem(kernel_buf,kernel_len,panicString, sizeof(panicString));
+    if(!ent_loc) {
+        printf("%s: Could not find \"%s\" string\n",__FUNCTION__, panicString);
+        return -1;
+    }
+    printf("%s: Found \"%s\" str loc at %p\n", __FUNCTION__, panicString, GET_OFFSET(kernel_len,ent_loc));
+    addr_t xref_stuff = xref64(kernel_buf,0,kernel_len,(addr_t)GET_OFFSET(kernel_len, ent_loc));
+    if(!xref_stuff) {
+        printf("%s: Could not find \"%s\" xref\n", __FUNCTION__, panicString);
+        return -1;
+    }
+    printf("%s: Found \"%s\" xref at %p\n",__FUNCTION__, panicString, (void*)xref_stuff);
+    addr_t beg_func = bof64(kernel_buf,0,xref_stuff);
+    if(!beg_func) {
+        printf("%s: Could not find function start\n",__FUNCTION__);
+        return -1;
+    }
+    // HACK(zhuowei): bof64 misses the pacibsp instruction at the start
+    beg_func -= 4;
+    printf("%s: Found find_lock_group_data address at %p\n", __FUNCTION__, (void*)beg_func);
+    addr_t startAddress = 0;
+    for (int index = 0; index < 2; index++) {
+        addr_t sub_xref_stuff = xref64code(kernel_buf, startAddress,(addr_t)GET_OFFSET(kernel_len, beg_func), beg_func);
+        if(!sub_xref_stuff) {
+            printf("%s: Could not find previous xref\n",__FUNCTION__);
+            return -1;
+        }
+        printf("%s: Found call to find_lock_group_data at %p\n", __FUNCTION__, (void*)sub_xref_stuff);
+        addr_t function = bof64(kernel_buf, 0, sub_xref_stuff);
+        if(!function) {
+            printf("%s: Could not find function start\n",__FUNCTION__);
+            return -1;
+        }
+        // HACK(zhuowei): bof64 misses the pacibsp instruction at the start
+        function -= 4;
+        printf("%s: Patching CTRR function %d start at %p\n",__FUNCTION__, index, (void*)function);
+        *(uint32_t *) (kernel_buf + function) = 0xD65F03C0;
+        startAddress = sub_xref_stuff + 4;
+    }
+    printf("%s: patched both CTRR functions\n", __FUNCTION__);
+    return 0;
+}
+
 int main(int argc, char **argv) {
     
     printf("%s: Starting...\n", __FUNCTION__);
@@ -226,6 +273,7 @@ int main(int argc, char **argv) {
         printf("\t-s\t\tPatch SPUFirmwareValidation (iOS 15 Only)\n");
         printf("\t-r\t\tPatch RootVPNotAuthenticatedAfterMounting (iOS 15 Only)\n");
         printf("\t-p\t\tPatch AMFIInitializeLocalSigningPublicKey (iOS 15 Only)\n");
+        printf("\t-c\t\tPatch CTRR (probably doesn't work)\n");
         return 0;
     }
     
@@ -278,6 +326,10 @@ int main(int argc, char **argv) {
         if(strcmp(argv[i], "-r") == 0) {
             printf("Kernel: Adding RootVPNotAuthenticatedAfterMounting patch...\n");
             get_RootVPNotAuthenticatedAfterMounting_patch(kernel_buf,kernel_len);
+        }
+        if(strcmp(argv[i], "-c") == 0) {
+            printf("Kernel: Adding CTRR patch...\n");
+            get_CTRR_patch(kernel_buf,kernel_len);
         }
     }
     
