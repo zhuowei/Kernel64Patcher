@@ -261,6 +261,28 @@ int get_CTRR_patch(void *kernel_buf, size_t kernel_len) {
     return 0;
 }
 
+int get_Kprintf_patch(void *kernel_buf, size_t kernel_len) {
+    printf("%s: Entering ...\n",__FUNCTION__);
+    char panicString[] = "os_cpu_in_cksum_mbuf: out of data";
+    void* ent_loc = memmem(kernel_buf,kernel_len,panicString, sizeof(panicString) - 1);
+    if(!ent_loc) {
+        printf("%s: Could not find \"%s\" string\n",__FUNCTION__, panicString);
+        return -1;
+    }
+    printf("%s: Found \"%s\" str loc at %p\n", __FUNCTION__, panicString, GET_OFFSET(kernel_len,ent_loc));
+    addr_t thecall = (addr_t)GET_OFFSET(kernel_len,ent_loc) - 0xc;
+    addr_t kprintf_addr = follow_call64(kernel_buf, thecall);
+    printf("%s: kprintf call at %p\n", __FUNCTION__, (void*)kprintf_addr);
+    uint32_t adrp_instr = *(uint32_t*)(kernel_buf + kprintf_addr + 0x30);
+    signed adr = ((adrp_instr & 0x60000000) >> 18) | ((adrp_instr & 0xFFFFE0) << 8);
+    uint64_t halfaddr = ((long long)adr << 1) + ((kprintf_addr + 0x30) & ~0xFFF);
+    uint32_t ldrb_instr = *(uint32_t*)(kernel_buf + kprintf_addr + 0x34);
+    halfaddr += (ldrb_instr >> 10) & 0xfff;
+    printf("%s: disable_kprintf_output_addr at %p\n", __FUNCTION__, (void*)halfaddr);
+    ((uint8_t*)kernel_buf)[halfaddr] = 0;
+    return 0;
+}
+
 int main(int argc, char **argv) {
     
     printf("%s: Starting...\n", __FUNCTION__);
@@ -274,6 +296,7 @@ int main(int argc, char **argv) {
         printf("\t-r\t\tPatch RootVPNotAuthenticatedAfterMounting (iOS 15 Only)\n");
         printf("\t-p\t\tPatch AMFIInitializeLocalSigningPublicKey (iOS 15 Only)\n");
         printf("\t-c\t\tPatch CTRR (probably doesn't work)\n");
+        printf("\t-k\t\tPatch kprintf (probably doesn't work)\n");
         return 0;
     }
     
@@ -330,6 +353,10 @@ int main(int argc, char **argv) {
         if(strcmp(argv[i], "-c") == 0) {
             printf("Kernel: Adding CTRR patch...\n");
             get_CTRR_patch(kernel_buf,kernel_len);
+        }
+        if(strcmp(argv[i], "-k") == 0) {
+            printf("Kernel: Adding kprintf patch...\n");
+            get_Kprintf_patch(kernel_buf,kernel_len);
         }
     }
     
