@@ -283,6 +283,31 @@ int get_Kprintf_patch(void *kernel_buf, size_t kernel_len) {
     return 0;
 }
 
+int get_Trustcache_patch(void* kernel_buf, size_t kernel_len) {
+/*
+     ff00a2e50f8 6c 25 0a 9b     madd       x12,x11,x10,x9
+     ff00a2e50fc 0d 00 40 39     ldrb       w13,[x0]
+     ff00a2e5100 8e 01 40 39     ldrb       w14,[x12]
+     ff00a2e5104 bf 01 0e 6b     cmp        w13,w14
+     ff00a2e5108 01 0c 00 54     b.ne       LAB_fffffff00a2e5288
+     ff00a2e510c 6e 25 0a 9b     madd       x14,x11,x10,x9
+     ff00a2e5110 0d 04 40 39     ldrb       w13,[x0, #0x1]
+     ff00a2e5114 ce 05 40 39     ldrb       w14,[x14, #0x1]
+     ff00a2e5118 bf 01 0e 6b     cmp        w13,w14
+*/
+    static const char thebuf[] = {0x6c, 0x25, 0x0a, 0x9b,
+    0x0d, 0x00, 0x40, 0x39,
+    0x8e, 0x01, 0x40, 0x39,
+    0xbf, 0x01, 0x0e, 0x6b};
+    void* ent_loc = memmem(kernel_buf,kernel_len,thebuf, sizeof(thebuf));
+    printf("%s: Found madd loc at %p\n", __FUNCTION__, GET_OFFSET(kernel_len,ent_loc));
+    uint32_t* instrs = (uint32_t*)(ent_loc - 0x10);
+    // return 1
+    instrs[0] = 0x52800020;
+    instrs[1] = 0xd65f03c0;
+    return 0;
+}
+
 int main(int argc, char **argv) {
     
     printf("%s: Starting...\n", __FUNCTION__);
@@ -297,6 +322,7 @@ int main(int argc, char **argv) {
         printf("\t-p\t\tPatch AMFIInitializeLocalSigningPublicKey (iOS 15 Only)\n");
         printf("\t-c\t\tPatch CTRR (probably doesn't work)\n");
         printf("\t-k\t\tPatch kprintf (probably doesn't work)\n");
+        printf("\t-t\t\tPatch trustcache (probably doesn't work)\n");
         return 0;
     }
     
@@ -357,6 +383,10 @@ int main(int argc, char **argv) {
         if(strcmp(argv[i], "-k") == 0) {
             printf("Kernel: Adding kprintf patch...\n");
             get_Kprintf_patch(kernel_buf,kernel_len);
+        }
+        if(strcmp(argv[i], "-t") == 0) {
+            printf("Kernel: Adding trustcache patch...\n");
+            get_Trustcache_patch(kernel_buf,kernel_len);
         }
     }
     
