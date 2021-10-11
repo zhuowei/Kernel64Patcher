@@ -224,7 +224,8 @@ int get_CTRR_patch(void *kernel_buf, size_t kernel_len) {
         return -1;
     }
     printf("%s: Found \"%s\" str loc at %p\n", __FUNCTION__, panicString, GET_OFFSET(kernel_len,ent_loc));
-    addr_t xref_stuff = xref64(kernel_buf,0,kernel_len,(addr_t)GET_OFFSET(kernel_len, ent_loc));
+    // hack: iPadOS 15.1b3 kernel gets a false xref inside the strings, so skip over strings
+    addr_t xref_stuff = xref64(kernel_buf,(addr_t)GET_OFFSET(kernel_len,ent_loc) + 0x10000,kernel_len,(addr_t)GET_OFFSET(kernel_len, ent_loc));
     if(!xref_stuff) {
         printf("%s: Could not find \"%s\" xref\n", __FUNCTION__, panicString);
         return -1;
